@@ -225,6 +225,7 @@ let split_rule_rhs = fun (syncats n) =>
 in (define split_rule_rhs split_rule_rhs)
 
 // Automatically generates code that defines a "symbol-discarding" macro like the ones on lines 154~184
+// But returns a quoted tree instead
 (define add_rule_auto [fun ((func_name lhs rhs)) =>
   let macro_name = (string_symbol (string_concat (print func_name) "'"))
   in match (split_rule_rhs rhs 0) with (rhs arg_list body) => `[begin
@@ -236,60 +237,3 @@ in (define split_rule_rhs split_rule_rhs)
 
 (add_pattern `(_ (kw_add_rule_auto 0) (word "add_rule_auto")))
 (add_rule `(add_rule_auto' (tree 0) ((op_left_paren 0) (kw_add_rule_auto 0) (tree 0) (op_right_paren 0))))
-
-// ===================================
-// Syntax definitions for new language
-// ===================================
-
-// Operators and keywords
-(add_pattern [_ <op_left_brace>             ::= (word "{")])
-(add_pattern [_ <op_right_brace>            ::= (word "}")])
-(add_pattern [_ <op_amp>                    ::= (word "&")])
-(add_pattern [_ <op_bar>                    ::= (word "|")])
-(add_pattern [_ <op_caret>                  ::= (word "^")])
-(add_pattern [_ <op_double_less>            ::= (word "<<")])
-(add_pattern [_ <op_double_greater>         ::= (word ">>")])
-(add_pattern [_ <op_period_double_greater>  ::= (word ".>>")])
-(add_pattern [_ <kw_var>                    ::= (word "var")])
-
-// Integer expressions
-(add_rule      [id'       <_expr 100> ::= <nat64>])
-(add_rule      [id'       <_expr 100> ::= <symbol>])
-(add_rule_auto [_ref      <_expr 100> ::= <op_amp>* <_expr 100>])
-(add_rule_auto [_deref    <_expr 100> ::= <op_asterisk>* <_expr 100>])
-(add_rule_auto [_minus    <_expr 90>  ::= <op_minus>* <_expr 90>])
-(add_rule_auto [_mul      <_expr 80>  ::= <_expr 80> <op_asterisk>* <_expr 81>])
-(add_rule_auto [_div      <_expr 80>  ::= <_expr 80> <op_slash>* <_expr 81>])
-(add_rule_auto [_add      <_expr 70>  ::= <_expr 70> <op_plus>* <_expr 71>])
-(add_rule_auto [_sub      <_expr 70>  ::= <_expr 70> <op_minus>* <_expr 71>])
-(add_rule_auto [_bitand   <_expr 65>  ::= <_expr 66> <op_amp>* <_expr 66>])
-(add_rule_auto [_bitor    <_expr 65>  ::= <_expr 66> <op_bar>* <_expr 66>])
-(add_rule_auto [_bitxor   <_expr 65>  ::= <_expr 66> <op_caret>* <_expr 66>])
-(add_rule_auto [_lsl      <_expr 65>  ::= <_expr 66> <op_double_less>* <_expr 66>])
-(add_rule_auto [_asr      <_expr 65>  ::= <_expr 66> <op_double_greater>* <_expr 66>])
-(add_rule_auto [_lsr      <_expr 65>  ::= <_expr 66> <op_period_double_greater>* <_expr 66>])
-(add_rule_auto [_assign   <_expr 60>  ::= <_expr 61> <op_equals>* <_expr 60>])
-
-// Conditional expressions
-(add_rule_auto [_le       <_expr 40>  ::= <_expr 41> <op_less_equals>* <_expr 41>])
-(add_rule_auto [_lt       <_expr 40>  ::= <_expr 41> <op_less>* <_expr 41>])
-(add_rule_auto [_ge       <_expr 40>  ::= <_expr 41> <op_greater_equals>* <_expr 41>])
-(add_rule_auto [_gt       <_expr 40>  ::= <_expr 41> <op_greater>* <_expr 41>])
-(add_rule_auto [_eq       <_expr 40>  ::= <_expr 41> <op_double_equals>* <_expr 41>])
-(add_rule_auto [_neq      <_expr 40>  ::= <_expr 41> <op_bang_equals>* <_expr 41>])
-(add_rule_auto [_not      <_expr 40>  ::= <op_bang>* <_expr 40>])
-(add_rule_auto [_and      <_expr 33>  ::= <_expr 33> <op_amp_amp>* <_expr 34>])
-(add_rule_auto [_or       <_expr 32>  ::= <_expr 32> <op_bar_bar>* <_expr 33>])
-(add_rule_auto [_implies  <_expr 31>  ::= <_expr 31> <op_right_arrow>* <_expr 32>])
-(add_rule_auto [_iff      <_expr 30>  ::= <_expr 30> <op_left_right_arrow>* <_expr 31>])
-
-// Block expressions
-(add_rule_auto [_vardecl  <_vardecl>  ::= <kw_var>* <symbol>])
-(add_rule_auto [_nil      <_inner>    ::= ])
-(add_rule_auto [_varcons  <_inner>    ::= <_vardecl> <opt_semicolon>* <_inner>])
-(add_rule_auto [_exprcons <_inner>    ::= <_expr 0> <opt_semicolon>* <_inner>])
-(add_rule_auto [_block    <_expr 100> ::= <op_left_brace>* <_inner> <op_right_brace>*])
-
-// Top level declarations
-(add_rule_auto [_         <_decl>     ::= ])
-(add_rule_auto [_         <expr 0>    ::= <op_left_brace>* <_inner> <op_right_brace>*])
