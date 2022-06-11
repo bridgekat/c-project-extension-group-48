@@ -74,12 +74,51 @@
 
 let
 
-  /*
+  lookup = fun (v stackInfo) => [
+    match stackInfo with
+    ((type name offset) . xs) =>
+      if (string_eq (print v) (print name))
+      then (list type name offset)
+      else (lookup v xs)
+  ]
+
+  // TODO: SSA IR format (X)
+  // TODO: merge code (push pop)
+  // TODO: makeRvalue
+  // TODO: register allocation (X)
+  // TODO: branch!
+  //   if [cond-expr] then [true-block] else [false-block]
+  //   ... [cond-expr] tst r0; beq false-label; [true-block] b end-label; false-label: [false-block] end-label: ...
+  // TODO: loop!
+  //   while [cond-expr] do [loop-body]
+  //   ... loop-begin: [cond-expr] tst r0; beq end-label; [loop-body] j loop-begin; end-label: ...
+
   exprIR = fun (x stackInfo) => [
     match x with
-    (`)
+    (`Nat n) => (list (string_concat "TODO: rvalue r0 =" (print n)))
+    (`Var v) => (list (string_concat "TODO: lvalue r0 = sp + " (print (lookup v stackInfo))))
+    (`Ref e) => [
+      match (exprIR e stackInfo) with
+      (`Lvalue addr code) => (list `Rvalue "TODO: rvalue r0 = lvalue r0")
+    ]
+    (`Deref e) => [
+      match (makeRvalue (exprIR e stackInfo)) with
+      (`Rvalue val code) => (list `Lvalue "TODO: lvalue r0 = rvalue r0")
+    ]
+    (`Minus e) => [
+      match (makeRvalue (exprIR e stackInfo)) with
+      (`Rvalue val code) => (list `Rvalue "TODO: rvalue r0 = -(rvalue r0)")
+    ]
+    // ...
+    (`Assign lhs rhs) => [
+      match (exprIR lhs stackInfo) with (`Lvalue addr code) => [
+        match (makeRvalue (exprIR rhs stackInfo)) with (`Rvalue val code) => [
+          (list `Lvalue "TODO: store val to addr, lvalue r0 = lvalue lhs")
+        ]
+      ]
+    ]
+
   ]
-  */
 
   offsetLocals = fun (n stackInfo) => [
     match stackInfo with
@@ -96,8 +135,8 @@ let
   blockInnerIR = fun (x stackInfo) => [
     match x with
     (`Nil)            => ()
-    (`VarCons e es)   => (cons (list "TODO: SP +4") (blockInnerIR es (pushLocal e stackInfo)))
-    (`ExprCons e es)  => (cons e (blockInnerIR es stackInfo))
+    (`VarCons e es)   => (cons (list "TODO: sp += 4") (blockInnerIR es (pushLocal e stackInfo)))
+    (`ExprCons e es)  => (cons (exprIR e stackInfo) (blockInnerIR es stackInfo)) // TODO
   ]
 
   paramsStackInfo = fun (params offset) => [

@@ -225,7 +225,6 @@ let split_rule_rhs = fun (syncats n) =>
 in (define split_rule_rhs split_rule_rhs)
 
 // Automatically generates code that defines a "symbol-discarding" macro like the ones on lines 154~184
-// But returns a quoted tree instead
 (define add_rule_auto [fun ((func_name lhs rhs)) =>
   let macro_name = (string_symbol (string_concat (print func_name) "'"))
   in match (split_rule_rhs rhs 0) with (rhs arg_list body) => `[begin
