@@ -236,3 +236,9 @@ in (define split_rule_rhs split_rule_rhs)
 
 (add_pattern `(_ (kw_add_rule_auto 0) (word "add_rule_auto")))
 (add_rule `(add_rule_auto' (tree 0) ((op_left_paren 0) (kw_add_rule_auto 0) (tree 0) (op_right_paren 0))))
+
+// Additional operators
+(add_pattern   [_ <op_double_plus> ::= (word "++")])
+(add_rule_auto [concat <expr 70> ::= <expr 70> <op_double_plus>* <expr 71>])
+(add_pattern   [_ <op_period_double_plus> ::= (word ".++")])
+(add_rule_auto [string_concat <expr 70> ::= <expr 70> <op_period_double_plus>* <expr 71>])
