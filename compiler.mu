@@ -13,7 +13,7 @@
 (add_pattern [_ <op_double_less>            ::= (word "<<")])
 (add_pattern [_ <op_double_greater>         ::= (word ">>")])
 (add_pattern [_ <op_period_double_greater>  ::= (word ".>>")])
-(add_pattern [_ <kw_var>                    ::= (word "var")])
+(add_pattern [_ <kw_int>                    ::= (word "int")])
 (add_pattern [_ <kw_while>                  ::= (word "while")])
 
 // Integer expressions
@@ -57,8 +57,9 @@
 (add_rule_auto [ArgNil        <_arglist> ::= ])
 (add_rule_auto [ArgOne        <_arglist> ::= <_expr 0>])
 (add_rule_auto [ArgSnoc       <_arglist> ::= <_arglist> <op_comma>* <_expr 0>])
-(add_rule_auto [VarDecl       <_var>     ::= <kw_var>* <symbol>])
-(add_rule_auto [VarInit       <_var>     ::= <kw_var>* <symbol> <op_equals>* <_expr 60>])
+(add_rule_auto [VarDecl       <_var>     ::= <kw_int>* <symbol>])
+(add_rule_auto [VarArray      <_var>     ::= <kw_int>* <op_left_bracket>* <nat64> <op_right_bracket>* <symbol>])
+(add_rule_auto [VarInit       <_var>     ::= <kw_int>* <symbol> <op_equals>* <_expr 60>])
 (add_rule_auto [BlockExpr     <_block>   ::= <_expr 0> <op_semicolon>*])
 (add_rule_auto [BlockVarCons  <_block>   ::= <_var> <op_semicolon>* <_block>])
 (add_rule_auto [BlockExprCons <_block>   ::= <_expr 0> <op_semicolon>* <_block>])
@@ -76,7 +77,9 @@
 let
 
   /*
-  * StackInfo: list of strings
+  * StackInfo: list of
+  *   (Int <name>)
+  *   (IntArray <name> <size>)
   *
   * Linear IR: list of
   *   (Lvalue <code>): final value of register 0 is considered as memory address
@@ -107,8 +110,11 @@ let
   // Returns the offset of a local variable
   lookup = fun (v stackInfo) =>
     let lookup' = fun (v stackInfo acc) => [
-      match stackInfo with (name . xs) =>
-        if (symbol_eq v name) then acc else (lookup' v xs [acc + 1])
+      match stackInfo with (x . xs) => [
+        match x with
+        (`Int name)           => if (symbol_eq v name) then `(Lvalue ,acc) else (lookup' v xs [acc + 1])
+        (`IntArray name size) => if (symbol_eq v name) then `(Rvalue ,acc) else (lookup' v xs [acc + size])
+      ]
     ] in (lookup' v stackInfo 0)
 
   // Increases all indices greater or equal than n by k
@@ -137,13 +143,21 @@ let
     (`Rvalue code) => `(Rvalue ,code)
   ]
 
+  // More permissive version (for functions with undefined return values)
+  makeRvalue_ = fun (x) => [
+    match x with
+    (`Lvalue code) => `(Rvalue ,[code ++ `((Load 0 0))])
+    (`Rvalue code) => `(Rvalue ,code)
+    (`Nvalue code) => `(Rvalue ,code) // Undefined!
+  ]
+
   // Converts an expression to IR
   exprIR = fun (x stackInfo) => [
     match x with
     (`Parens e)       => (exprIR e stackInfo)
     (`Block b)        => (blockIR b stackInfo)
     (`Nat n)          => `(Rvalue ((Const 0 ,n)))
-    (`Var v)          => [match (lookup v stackInfo) with index => `(Lvalue ((Local 0 ,index)))]
+    (`Var v)          => [match (lookup v stackInfo) with (type index) => `(,type ((Local 0 ,index)))]
     (`Ref e)          => [match (exprIR e stackInfo) with (`Lvalue code) => `(Rvalue ,code)]
     (`Deref e)        => [match (makeRvalue (exprIR e stackInfo)) with (`Rvalue code) => `(Lvalue ,code)]
     (`Assign lhs rhs) => [
@@ -209,18 +223,22 @@ let
   // Converts a block to IR
   blockIR = fun (x stackInfo) => [
     match x with
-    (`BlockExpr e)                       => (exprIR e stackInfo)
-    (`BlockVarCons (`VarDecl name) es)   => [
-      match (blockIR es (cons name stackInfo)) with (type code) =>
+    (`BlockExpr e)                        => (exprIR e stackInfo)
+    (`BlockVarCons (`VarDecl name) es)    => [
+      match (blockIR es (cons `(Int ,name) stackInfo)) with (type code) =>
         `(,type ,[`((PushN 1)) ++ code ++ `((PopN 1))])
     ]
-    (`BlockVarCons (`VarInit name e) es) => [
+    (`BlockVarCons (`VarArray size name) es) => [
+      match (blockIR es (cons `(IntArray ,name ,size) stackInfo)) with (type code) =>
+        `(,type ,[`((PushN ,size)) ++ code ++ `((PopN ,size))])
+    ]
+    (`BlockVarCons (`VarInit name e) es)  => [
       match (makeRvalue (exprIR e stackInfo)) with (`Rvalue initCode) => [
-        match (blockIR es (cons name stackInfo)) with (type code) =>
+        match (blockIR es (cons `(Int ,name) stackInfo)) with (type code) =>
           `(,type ,[initCode ++ `((Push 0)) ++ code ++ `((PopN 1))])
       ]
     ]
-    (`BlockExprCons e es)                => [
+    (`BlockExprCons e es)                 => [
       match (exprIR e stackInfo) with (_ lhsCode) => [
         match (blockIR es stackInfo) with (type rhsCode) =>
           `(,type ,[lhsCode ++ rhsCode])
@@ -239,7 +257,7 @@ let
 
   // Converts a function to IR
   functionIR = fun ((params block)) => [
-    match (makeRvalue (blockIR block params)) with (`Rvalue code) =>
+    match (makeRvalue_ (blockIR block params)) with (`Rvalue code) =>
       if (hasCall code)
       then `((Push ,lr)) ++ (makeGap code 0 1) ++ `((Pop ,lr) (Return))
       else code ++ `((Return))
@@ -309,23 +327,23 @@ in [begin
 // =============
 
 (define
-  func1 `((x y) {
-    var z;
+  func1 `(((Int x) (Int y)) {
+    int z;
     z = y;
     z * 0x10000 + x * 0x10;
   }))
 
 (define
-  func2 `((x y) {
+  func2 `(((Int x) (Int y)) {
     if (x > y) then x else y;
   }))
 
 (define
-  func3 `((n) {
-    var a = 1;
-    var b = 1;
+  func3 `(((Int n)) {
+    int a = 1;
+    int b = 1;
     while (b <= n) {
-      var c = a + b;
+      int c = a + b;
       a = b;
       b = c;
     };
@@ -333,25 +351,25 @@ in [begin
   }))
 
 (define
-  func4 `((n m) {
-    var p = 233;
-    var i = 0;
+  func4 `(((Int n) (Int m)) {
+    int p = 233;
+    int i = 0;
     while (i < n) {
-      var j = 0;
+      int j = 0;
       while (j < m) {
         *(p + i * m + j) = 0;
         j = j + 1;
       };
       i = i + 1;
     };
-    0;
   }))
 
 (define
-  func5 `((k pvec) {
-    *pvec       = fixed_mul(k, *pvec);
-    *(pvec + 1) = fixed_mul(k, *(pvec + 1));
-    *(pvec + 2) = fixed_mul(k, *(pvec + 2));
+  func5 `(((Int k) (Int pvec)) {
+    int[3] arr;
+    *arr       = fixed_mul(k, *pvec);
+    *(arr + 1) = fixed_mul(k, *(pvec + 1));
+    *(arr + 2) = fixed_mul(k, *(pvec + 2));
   }))
 
 (display (toString (functionIR func1)))
