@@ -2,7 +2,8 @@
 // Syntax definitions for new language
 // ===================================
 
-// Operators and keywords
+// Additional operators and keywords
+// Others are defined in `prelude.mu` as part of the base language and can be reused
 (add_pattern [_ <op_period_slash>           ::= (word "./")])
 (add_pattern [_ <op_left_brace>             ::= (word "{")])
 (add_pattern [_ <op_right_brace>            ::= (word "}")])
@@ -17,9 +18,10 @@
 
 // Integer expressions
 (add_rule_auto [Parens   <_expr 100> ::= <op_left_paren>* <_expr 0> <op_right_paren>*])
-(add_rule_auto [Block    <_expr 100> ::= <op_left_brace>* <_inner> <op_right_brace>*])
+(add_rule_auto [Block    <_expr 100> ::= <op_left_brace>* <_block> <op_right_brace>*])
 (add_rule_auto [Nat      <_expr 100> ::= <nat64>])
 (add_rule_auto [Var      <_expr 100> ::= <symbol>])
+(add_rule_auto [App      <_expr 100> ::= <symbol> <op_left_paren>* <_arglist> <op_right_paren>*])
 (add_rule_auto [Ref      <_expr 100> ::= <op_amp>* <_expr 100>])
 (add_rule_auto [Deref    <_expr 100> ::= <op_asterisk>* <_expr 100>])
 (add_rule_auto [Minus    <_expr 90>  ::= <op_minus>* <_expr 90>])
@@ -36,7 +38,7 @@
 (add_rule_auto [Lsr      <_expr 65>  ::= <_expr 66> <op_period_double_greater>* <_expr 66>])
 (add_rule_auto [Assign   <_expr 60>  ::= <_expr 61> <op_equals>* <_expr 60>])
 
-// Conditional expressions
+// Boolean expressions
 (add_rule_auto [Le       <_expr 40>  ::= <_expr 41> <op_less_equals>* <_expr 41>])
 (add_rule_auto [Lt       <_expr 40>  ::= <_expr 41> <op_less>* <_expr 41>])
 (add_rule_auto [Ge       <_expr 40>  ::= <_expr 41> <op_greater_equals>* <_expr 41>])
@@ -51,16 +53,20 @@
 (add_rule_auto [Iff      <_expr 30>  ::= <_expr 30> <op_left_right_arrow>* <_expr 31>])
 */
 
-// Block expressions
-(add_rule_auto [VarDecl  <_vardecl>  ::= <kw_var>* <symbol>])
-(add_rule_auto [Nil      <_inner>    ::= ])
-(add_rule_auto [VarCons  <_inner>    ::= <_vardecl> <op_semicolon>* <_inner>])
-(add_rule_auto [ExprCons <_inner>    ::= <_expr 0> <op_semicolon>* <_inner>])
-(add_rule_auto [If       <_expr 10>  ::= <kw_if>* <_expr 11> <kw_then>* <_expr 11> <kw_else>* <_expr 10>])
-(add_rule_auto [While    <_expr 10>  ::= <kw_while>* <_expr 11> <_expr 10>])
+// Compound expressions
+(add_rule_auto [ArgNil        <_arglist> ::= ])
+(add_rule_auto [ArgOne        <_arglist> ::= <_expr 0>])
+(add_rule_auto [ArgSnoc       <_arglist> ::= <_arglist> <op_comma>* <_expr 0>])
+(add_rule_auto [VarDecl       <_var>     ::= <kw_var>* <symbol>])
+(add_rule_auto [VarInit       <_var>     ::= <kw_var>* <symbol> <op_equals>* <_expr 60>])
+(add_rule_auto [BlockExpr     <_block>   ::= <_expr 0> <op_semicolon>*])
+(add_rule_auto [BlockVarCons  <_block>   ::= <_var> <op_semicolon>* <_block>])
+(add_rule_auto [BlockExprCons <_block>   ::= <_expr 0> <op_semicolon>* <_block>])
+(add_rule_auto [If            <_expr 10> ::= <kw_if>* <_expr 11> <kw_then>* <_expr 11> <kw_else>* <_expr 10>])
+(add_rule_auto [While         <_expr 10> ::= <kw_while>* <_expr 11> <_expr 10>])
 
 // Top level declarations
-(add_rule [Top' <tree 0> ::= <op_left_brace> <_inner> <op_right_brace>])
+(add_rule [Top' <tree 0> ::= <op_left_brace> <_block> <op_right_brace>])
 (define_macro Top' [fun (_ x _) => x])
 
 // ===============================
@@ -69,71 +75,41 @@
 
 let
 
-  // StackInfo: list of strings
-  lookup = fun (v stackInfo) =>
-    let lookup' = fun (v stackInfo n) => [
-      match stackInfo with (name . xs) =>
-        if (string_eq (print v) (print name)) then n else (lookup' v xs [n + 1])
-    ] in (lookup' v stackInfo 0)
-
   /*
-  * IR:
-  * (Lvalue <code>): final value of register 0 is considered as memory address
-  * (Rvalue <code>): final value of register 0 is considered as value
+  * StackInfo: list of strings
   *
-  * Code:
-  * (Const <regid> <value>):          constant into register
-  * (Local <regid> <index>):          translates to (Add <regid> <sp> <index * 4>)
-  * (Push <regid>?):                  push content of register onto stack
-  * (Pop <regid>?):                   pop top of the stack into a register
-  * (Load <regid> <regid addr>):      load data at memory location specified by a register
-  * (Store <regid> <regid addr>):     store data to memory location specified by a register
-  * (Label <id>):                     label
-  * (Jump <id>):                      jump to label
-  * (JumpZero <id>):                  if register 0 is zero then jump to label
-  * (Minus <regid> <regid>)...:       unary arithmetic instructions
-  * (Add <regid> <regid> <regid>)...: binary arithmetic instructions
+  * Linear IR: list of
+  *   (Lvalue <code>): final value of register 0 is considered as memory address
+  *   (Rvalue <code>): final value of register 0 is considered as value
+  *
+  * Code: list of
+  *   (Const <regid> <value>):          constant into register
+  *   (Local <regid> <index>):          translates to (Add <regid> <sp> <index * 4>)
+  *   (Push <regid>):                   push content of register onto stack
+  *   (Pop <regid>):                    pop top of the stack into a register
+  *   (PushN <num>):                    translates to (Sub <sp> <sp> <num * 4>)
+  *   (PopN <num>):                     translates to (Add <sp> <sp> <num * 4>)
+  *   (Load <regid> <regid addr>):      load data at memory location specified by a register
+  *   (Store <regid> <regid addr>):     store data to memory location specified by a register
+  *   (Minus <regid> <regid>)...:       unary arithmetic instructions
+  *   (Add <regid> <regid> <regid>)...: binary arithmetic instructions
+  *   (Label <id>):                     label
+  *   (Jump <id>):                      jump to label
+  *   (JumpZero <id>):                  if register 0 is zero then jump to label
+  *   (Call <id>):                      jump with link (call function)
+  *   (Return):                         jump back to linked position (return)
   */
 
+  symbol_eq = fun (a b) => (string_eq (print a) (print b))
+  lr = 14
   labelCount = 0
 
-  // Converts IR code to ARM assembly
-  toString = fun (x) => [
-    match x with
-    ()       => "\n"
-    (x . xs) => [
-      match x with
-      (`Const regid value) => "ldr r" .++ (print regid) .++ ", =" .++ (print value)
-      (`Local regid index) => "add r" .++ (print regid) .++ ", sp, #" .++ (print [index * 4])
-      (`Push)              => "sub sp, sp, #4"
-      (`Push regid)        => "push { r" .++ (print regid) .++ " }"
-      (`Pop)               => "add sp, sp, #4"
-      (`Pop regid)         => "pop { r" .++ (print regid) .++ " }"
-      (`Load regid addr)   => "ldr r" .++ (print regid) .++ ", [r" .++ (print addr) .++ "]"
-      (`Store regid addr)  => "str r" .++ (print regid) .++ ", [r" .++ (print addr) .++ "]"
-      (`Label id)          => "label_" .++ (print id) .++ ":"
-      (`Jump id)           => "b label_" .++ (print id)
-      (`JumpZero id)       => "tst r0, r0\n" .++ "beq label_" .++ (print id)
-      (`Minus rd rn)       => "rsb r" .++ (print rd) .++ ", r" .++ (print rd) .++ ", #0"
-      (`Add rd rn rm)      => "add r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
-      (`Sub rd rn rm)      => "sub r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
-      (`Mul rd rn rm)      => "mul r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
-      (`SDiv rd rn rm)     => "sdiv r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
-      (`UDiv rd rn rm)     => "udiv r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
-      (`BitAnd rd rn rm)   => "and r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
-      (`BitOr rd rn rm)    => "orr r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
-      (`BitXor rd rn rm)   => "eor r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
-      (`Lsl rd rn rm)      => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", lsl r" .++ (print rm)
-      (`Asr rd rn rm)      => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", asr r" .++ (print rm)
-      (`Lsr rd rn rm)      => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", lsr r" .++ (print rm)
-      (`Le rd rn rm)       => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movle r0, #1"
-      (`Lt rd rn rm)       => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movlt r0, #1"
-      (`Ge rd rn rm)       => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movge r0, #1"
-      (`Gt rd rn rm)       => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movgt r0, #1"
-      (`Eq rd rn rm)       => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "moveq r0, #1"
-      (`Neq rd rn rm)      => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movne r0, #1"
-    ] .++ "\n" .++ (toString xs)
-  ]
+  // Returns the offset of a local variable
+  lookup = fun (v stackInfo) =>
+    let lookup' = fun (v stackInfo acc) => [
+      match stackInfo with (name . xs) =>
+        if (symbol_eq v name) then acc else (lookup' v xs [acc + 1])
+    ] in (lookup' v stackInfo 0)
 
   // Increases all indices greater or equal than n by k
   // Use it before surrounding code with Push/Pop pairs
@@ -143,8 +119,10 @@ let
     (x . xs)  => [
       match x with
       (`Local regid index) => (cons (list `Local regid [if index >= n then [index + k] else index]) (makeGap xs n k))
-      (`Push . _)          => (cons x (makeGap xs [n + 1] k))
-      (`Pop . _)           => (cons x (makeGap xs [n - 1] k))
+      (`Push regid)        => (cons x (makeGap xs [n + 1] k))
+      (`Pop regid)         => (cons x (makeGap xs [n - 1] k))
+      (`PushN m)           => (cons x (makeGap xs [n + m] k))
+      (`PopN m)            => (cons x (makeGap xs [n - m] k))
       other                => (cons x (makeGap xs n k))
     ]
   ]
@@ -197,6 +175,13 @@ let
                 code ++ `((Jump ,beginLabel)) ++ `((Label ,endLabel))
               ])
     ]]]
+    // Assuming CDECL convention: caller clean-up (this allows Push/Pops in the IR to pair up)
+    // We don't care about other registers, as long as register 0 contains the return value
+    (`App name args)  => [
+      match (arglistIR args stackInfo) with (n code) =>
+        `(Rvalue ,[code ++ `((Call ,(print name)) (PopN ,n))])
+    ]
+    // The rest are all unary or binary arithmetic operations
     (unop e)          => [match (makeRvalue (exprIR e stackInfo)) with (`Rvalue code) => `(Rvalue ,[code ++ `((,unop 0 0))])]
     (binop lhs rhs)   => [
       match (makeRvalue (exprIR lhs stackInfo)) with (`Rvalue lhsCode) => [
@@ -205,69 +190,172 @@ let
     ]]
   ]
 
+  // Converts an arglist to (<num args> <code>)
+  // <code> is responsible for pushing arguments onto stack, from right to left
+  arglistIR = fun (x stackInfo) => [
+    match x with
+    (`ArgNil)       => (list 0 (nil))
+    (`ArgOne e)     => [
+      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue code) =>
+        (list 1 [code ++ `((Push 0))])
+    ]
+    (`ArgSnoc es e) => [
+      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue rhsCode) => [
+        match (arglistIR es stackInfo) with (n lhsCode) =>
+          (list [n + 1] [rhsCode ++ `((Push 0)) ++ (makeGap lhsCode 0 1)])
+    ]]
+  ]
+
   // Converts a block to IR
   blockIR = fun (x stackInfo) => [
     match x with
-    (`VarCons e es)     => [
-      match e with (VarDecl name) => [
+    (`BlockExpr e)                       => (exprIR e stackInfo)
+    (`BlockVarCons (`VarDecl name) es)   => [
+      match (blockIR es (cons name stackInfo)) with (type code) =>
+        `(,type ,[`((PushN 1)) ++ code ++ `((PopN 1))])
+    ]
+    (`BlockVarCons (`VarInit name e) es) => [
+      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue initCode) => [
         match (blockIR es (cons name stackInfo)) with (type code) =>
-          `(,type ,[`((Push)) ++ code ++ `((Pop))])
+          `(,type ,[initCode ++ `((Push 0)) ++ code ++ `((PopN 1))])
       ]
     ]
-    (`ExprCons e (Nil)) => (exprIR e stackInfo)
-    (`ExprCons e es)    => [
+    (`BlockExprCons e es)                => [
       match (exprIR e stackInfo) with (_ lhsCode) => [
         match (blockIR es stackInfo) with (type rhsCode) =>
-          `(,type ,(merge lhsCode rhsCode))
+          `(,type ,[lhsCode ++ rhsCode])
       ]
     ]
   ]
 
+  // Checks if the given code contains a function call (so that we need to save LR on the stack)
+  // (Registers 4+ are never used so we don't need to save them.)
+  hasCall = fun (x) => [
+    match x with
+    ()              => false
+    ((`Call _) . _) => true
+    (_ . xs)        => (hasCall xs)
+  ]
+
   // Converts a function to IR
-  functionIR = fun ((params block)) => (makeRvalue (blockIR block params))
+  functionIR = fun ((params block)) => [
+    match (makeRvalue (blockIR block params)) with (`Rvalue code) =>
+      if (hasCall code)
+      then `((Push ,lr)) ++ (makeGap code 0 1) ++ `((Pop ,lr) (Return))
+      else code ++ `((Return))
+  ]
+
+  // Converts IR code to ARM assembly
+  toString = fun (x) => [
+    match x with
+    // Shortcuts (better than nothing...)
+    ((`Le 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bgt label_" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Lt 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bge label_" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Ge 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "blt label_" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Gt 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "ble label_" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Eq 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bne label_" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Neq 0 rn rm) (`JumpZero id) . xs) => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "beq label_" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Local 0 index) (`Load 0 0) . xs)                     => "ldr r0, [sp, #" .++ (print [index * 4]) .++ "]\n" .++ (toString xs)
+    ((`Push 0) (`Local 0 index) (`Pop 1) (`Store 1 0) . xs) => "str r0, [sp, #" .++ (print [[index - 1] * 4]) .++ "]\n" .++ (toString xs)
+    ((`PopN 0) . xs)           => (toString xs)
+    ((`PopN a) (`PopN b) . xs) => (toString `((PopN ,[a + b]) . ,xs))
+    // Single instructions
+    ()       => "\n"
+    (x . xs) => [
+      match x with
+      (`Const regid value)  => "ldr r" .++ (print regid) .++ ", =" .++ (print value)
+      (`Local regid index)  => "add r" .++ (print regid) .++ ", sp, #" .++ (print [index * 4])
+      (`Push regid)         => "push { r" .++ (print regid) .++ " }"
+      (`Pop regid)          => "pop { r" .++ (print regid) .++ " }"
+      (`PushN num)          => "sub sp, sp, #" .++ (print [num * 4])
+      (`PopN num)           => "add sp, sp, #" .++ (print [num * 4])
+      (`Load regid addr)    => "ldr r" .++ (print regid) .++ ", [r" .++ (print addr) .++ "]"
+      (`Store regid addr)   => "str r" .++ (print regid) .++ ", [r" .++ (print addr) .++ "]"
+      (`Label id)           => "label_" .++ (print id) .++ ":"
+      (`Jump id)            => "b label_" .++ (print id)
+      (`JumpZero id)        => "tst r0, r0\n" .++ "beq label_" .++ (print id)
+      (`Call name)          => "bl " .++ name
+      (`Return)             => "bx lr"
+      (`Minus rd rn)        => "rsb r" .++ (print rd) .++ ", r" .++ (print rd) .++ ", #0"
+      (`Add rd rn rm)       => "add r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`Sub rd rn rm)       => "sub r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`Mul rd rn rm)       => "mul r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`SDiv rd rn rm)      => "sdiv r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`UDiv rd rn rm)      => "udiv r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`BitAnd rd rn rm)    => "and r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`BitOr rd rn rm)     => "orr r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`BitXor rd rn rm)    => "eor r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`Lsl rd rn rm)       => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", lsl r" .++ (print rm)
+      (`Asr rd rn rm)       => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", asr r" .++ (print rm)
+      (`Lsr rd rn rm)       => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", lsr r" .++ (print rm)
+      (`Le rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movle r0, #1"
+      (`Lt rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movlt r0, #1"
+      (`Ge rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movge r0, #1"
+      (`Gt rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movgt r0, #1"
+      (`Eq rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "moveq r0, #1"
+      (`Neq rd rn rm)       => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movne r0, #1"
+    ] .++ "\n" .++ (toString xs)
+  ]
 
 in [begin
-  (define toString toString)
-  (define lookup lookup)
-  (define makeGap makeGap)
-  (define merge merge)
-  (define makeRvalue makeRvalue)
   (define exprIR exprIR)
   (define blockIR blockIR)
   (define functionIR functionIR)
+  (define toString toString)
 ]
 
 // =============
 // Test programs
 // =============
 
-(define func1 `(
-  (x y) {
+(define
+  func1 `((x y) {
     var z;
     z = y;
     z * 0x10000 + x * 0x10;
   }))
 
-(define func2 `(
-  (x y) {
-    if (x > y) then { x; } else y;
+(define
+  func2 `((x y) {
+    if (x > y) then x else y;
   }))
 
-(define func3 `(
-  (n) {
-    var a;
-    var b;
-    a = 1;
-    b = 1;
+(define
+  func3 `((n) {
+    var a = 1;
+    var b = 1;
     while (b <= n) {
-      var c;
-      c = a + b;
+      var c = a + b;
       a = b;
       b = c;
     };
     b;
   }))
 
-(display [match (functionIR func1) with (`Rvalue code) => (toString code)])
-(display [match (functionIR func2) with (`Rvalue code) => (toString code)])
-(display [match (functionIR func3) with (`Rvalue code) => (toString code)])
+(define
+  func4 `((n m) {
+    var p = 233;
+    var i = 0;
+    while (i < n) {
+      var j = 0;
+      while (j < m) {
+        *(p + i * m + j) = 0;
+        j = j + 1;
+      };
+      i = i + 1;
+    };
+    0;
+  }))
+
+(define
+  func5 `((k pvec) {
+    *pvec       = fixed_mul(k, *pvec);
+    *(pvec + 1) = fixed_mul(k, *(pvec + 1));
+    *(pvec + 2) = fixed_mul(k, *(pvec + 2));
+  }))
+
+(display (toString (functionIR func1)))
+(display (toString (functionIR func2)))
+(display (toString (functionIR func3)))
+(display (toString (functionIR func4)))
+(display (toString (functionIR func5)))
