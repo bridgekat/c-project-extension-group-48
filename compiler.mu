@@ -14,6 +14,7 @@
 (add_pattern [_ <op_double_greater>         ::= (word ">>")])
 (add_pattern [_ <op_period_double_greater>  ::= (word ".>>")])
 (add_pattern [_ <kw_int>                    ::= (word "int")])
+(add_pattern [_ <kw_void>                   ::= (word "void")])
 (add_pattern [_ <kw_while>                  ::= (word "while")])
 
 // Integer expressions
@@ -22,6 +23,7 @@
 (add_rule_auto [Nat      <_expr 100> ::= <nat64>])
 (add_rule_auto [Var      <_expr 100> ::= <symbol>])
 (add_rule_auto [App      <_expr 100> ::= <symbol> <op_left_paren>* <_arglist> <op_right_paren>*])
+(add_rule_auto [Access   <_expr 100> ::= <_expr 100> <op_left_bracket>* <_expr 0> <op_right_bracket>*])
 (add_rule_auto [Ref      <_expr 100> ::= <op_amp>* <_expr 100>])
 (add_rule_auto [Deref    <_expr 100> ::= <op_asterisk>* <_expr 100>])
 (add_rule_auto [Minus    <_expr 90>  ::= <op_minus>* <_expr 90>])
@@ -67,8 +69,20 @@
 (add_rule_auto [While         <_expr 10> ::= <kw_while>* <_expr 11> <_expr 10>])
 
 // Top level declarations
-(add_rule [Top' <tree 0> ::= <op_left_brace> <_block> <op_right_brace>])
-(define_macro Top' [fun (_ x _) => x])
+// (Yes, there is no difference between "void" and "int" as return types!)
+(add_rule      [_             <_void_int>  ::= <kw_void>])
+(add_rule      [_             <_void_int>  ::= <kw_int>])
+(add_rule      [ParamNil'     <_paramlist> ::= ])
+(add_rule      [ParamOne'     <_paramlist> ::= <kw_int> <symbol>])
+(add_rule      [ParamCons'    <_paramlist> ::= <kw_int> <symbol> <op_comma> <_paramlist>])
+(add_rule_auto [Func          <_func>      ::= <_void_int>* <symbol> <op_left_paren>* <_paramlist> <op_right_paren>* <_expr 0> <op_semicolon>*])
+(add_rule_auto [DeclNil       <_decls>     ::= ])
+(add_rule_auto [DeclCons      <_decls>     ::= <_func> <_decls>])
+(add_rule      [Top'          <tree 0>     ::= <op_left_brace> <_decls> <op_right_brace>])
+(define_macro ParamNil'  [fun ()        => `()])
+(define_macro ParamOne'  [fun (_ x)     => `((Int ,x))])
+(define_macro ParamCons' [fun (_ l _ r) => `((Int ,l) . ,r)])
+(define_macro Top'       [fun (_ x _)   => `(quote ,x)])
 
 // ===============================
 // Main procedures for compilation
@@ -81,7 +95,7 @@ let
   *   (Int <name>)
   *   (IntArray <name> <size>)
   *
-  * Linear IR: list of
+  * LinearIR:
   *   (Lvalue <code>): final value of register 0 is considered as memory address
   *   (Rvalue <code>): final value of register 0 is considered as value
   *
@@ -99,7 +113,8 @@ let
   *   (Label <id>):                     label
   *   (Jump <id>):                      jump to label
   *   (JumpZero <id>):                  if register 0 is zero then jump to label
-  *   (Call <id>):                      jump with link (call function)
+  *   (Func <name>):                    function label
+  *   (Call <name>):                    jump with link (call function)
   *   (Return):                         jump back to linked position (return)
   */
 
@@ -160,6 +175,11 @@ let
     (`Var v)          => [match (lookup v stackInfo) with (type index) => `(,type ((Local 0 ,index)))]
     (`Ref e)          => [match (exprIR e stackInfo) with (`Lvalue code) => `(Rvalue ,code)]
     (`Deref e)        => [match (makeRvalue (exprIR e stackInfo)) with (`Rvalue code) => `(Lvalue ,code)]
+    (`Access lhs rhs) => [
+      match (makeRvalue (exprIR lhs stackInfo)) with (`Rvalue lhsCode) => [
+        match (makeRvalue (exprIR rhs stackInfo)) with (`Rvalue rhsCode) =>
+          `(Lvalue ,[(merge lhsCode rhsCode) ++ `((Add4 0 1 0))]) // Temporary fix when no type checking...
+    ]]
     (`Assign lhs rhs) => [
       match (exprIR lhs stackInfo) with (`Lvalue lhsCode) => [
         match (makeRvalue (exprIR rhs stackInfo)) with (`Rvalue rhsCode) =>
@@ -255,26 +275,35 @@ let
     (_ . xs)        => (hasCall xs)
   ]
 
-  // Converts a function to IR
-  functionIR = fun ((params block)) => [
+  // Converts a function to IR code
+  functionIR = fun ((`Func name params (`Block block))) => [
     match (makeRvalue_ (blockIR block params)) with (`Rvalue code) =>
       if (hasCall code)
-      then `((Push ,lr)) ++ (makeGap code 0 1) ++ `((Pop ,lr) (Return))
-      else code ++ `((Return))
+      then `((Func ,(print name)) (Push ,lr)) ++ (makeGap code 0 1) ++ `((Pop ,lr) (Return))
+      else `((Func ,(print name))) ++ code ++ `((Return))
+  ]
+
+  // Converts a program (a list of function definitions) to IR code
+  programIR = fun (x) => [
+    match x with
+    (`DeclNil)       => (nil)
+    (`DeclCons d ds) => (functionIR d) ++ (programIR ds)
   ]
 
   // Converts IR code to ARM assembly
   toString = fun (x) => [
     match x with
     // Shortcuts (better than nothing...)
-    ((`Le 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bgt label_" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Lt 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bge label_" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Ge 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "blt label_" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Gt 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "ble label_" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Eq 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bne label_" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Neq 0 rn rm) (`JumpZero id) . xs) => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "beq label_" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Local 0 index) (`Load 0 0) . xs)                     => "ldr r0, [sp, #" .++ (print [index * 4]) .++ "]\n" .++ (toString xs)
-    ((`Push 0) (`Local 0 index) (`Pop 1) (`Store 1 0) . xs) => "str r0, [sp, #" .++ (print [[index - 1] * 4]) .++ "]\n" .++ (toString xs)
+    ((`Le 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bgt l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Lt 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bge l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Ge 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "blt l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Gt 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "ble l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Eq 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bne l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Neq 0 rn rm) (`JumpZero id) . xs) => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "beq l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Local 0 index) (`Load 0 0) . xs)                      => "ldr r0, [sp, #" .++ (print [index * 4]) .++ "]\n" .++ (toString xs)
+    ((`Push 0) (`Local 0 index) (`Pop 1) (`Store 1 0) . xs)  => "str r0, [sp, #" .++ (print [[index - 1] * 4]) .++ "]\n" .++ (toString xs)
+    ((`Push 0) (`Const 0 const) (`Pop 1) (`Add 0 1 0) . xs)  => "add r0, r0, #" .++ (print const) .++ "\n" .++ (toString xs)
+    ((`Push 0) (`Const 0 const) (`Pop 1) (`Add4 0 1 0) . xs) => "add r0, r0, #" .++ (print [const * 4]) .++ "\n" .++ (toString xs) // Temporary fix
     ((`PopN 0) . xs)           => (toString xs)
     ((`PopN a) (`PopN b) . xs) => (toString `((PopN ,[a + b]) . ,xs))
     // Single instructions
@@ -289,13 +318,15 @@ let
       (`PopN num)           => "add sp, sp, #" .++ (print [num * 4])
       (`Load regid addr)    => "ldr r" .++ (print regid) .++ ", [r" .++ (print addr) .++ "]"
       (`Store regid addr)   => "str r" .++ (print regid) .++ ", [r" .++ (print addr) .++ "]"
-      (`Label id)           => "label_" .++ (print id) .++ ":"
-      (`Jump id)            => "b label_" .++ (print id)
-      (`JumpZero id)        => "tst r0, r0\n" .++ "beq label_" .++ (print id)
+      (`Label id)           => "l" .++ (print id) .++ ":"
+      (`Jump id)            => "b l" .++ (print id)
+      (`JumpZero id)        => "tst r0, r0\n" .++ "beq l" .++ (print id)
+      (`Func name)          => "\n" .++ name .++ ":"
       (`Call name)          => "bl " .++ name
       (`Return)             => "bx lr"
       (`Minus rd rn)        => "rsb r" .++ (print rd) .++ ", r" .++ (print rd) .++ ", #0"
       (`Add rd rn rm)       => "add r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
+      (`Add4 rd rn rm)      => "add r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm) .++ ", lsl #2" // Temporary fix
       (`Sub rd rn rm)       => "sub r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
       (`Mul rd rn rm)       => "mul r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
       (`SDiv rd rn rm)      => "sdiv r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
@@ -319,6 +350,7 @@ in [begin
   (define exprIR exprIR)
   (define blockIR blockIR)
   (define functionIR functionIR)
+  (define programIR programIR)
   (define toString toString)
 ]
 
@@ -326,20 +358,19 @@ in [begin
 // Test programs
 // =============
 
-(define
-  func1 `(((Int x) (Int y)) {
+(define all {
+
+  int func1(int x, int y) {
     int z;
     z = y;
     z * 0x10000 + x * 0x10;
-  }))
+  };
 
-(define
-  func2 `(((Int x) (Int y)) {
+  int func2(int x, int y) {
     if (x > y) then x else y;
-  }))
+  };
 
-(define
-  func3 `(((Int n)) {
+  int func3(int n) {
     int a = 1;
     int b = 1;
     while (b <= n) {
@@ -348,32 +379,43 @@ in [begin
       b = c;
     };
     b;
-  }))
+  };
 
-(define
-  func4 `(((Int n) (Int m)) {
+  void func4(int n, int m) {
     int p = 233;
     int i = 0;
     while (i < n) {
       int j = 0;
       while (j < m) {
-        *(p + i * m + j) = 0;
+        p[i * m + j] = 0;
         j = j + 1;
       };
       i = i + 1;
     };
-  }))
+  };
 
-(define
-  func5 `(((Int k) (Int pvec)) {
-    int[3] arr;
-    *arr       = fixed_mul(k, *pvec);
-    *(arr + 1) = fixed_mul(k, *(pvec + 1));
-    *(arr + 2) = fixed_mul(k, *(pvec + 2));
-  }))
+  void func5(int k, int pvec, int pdst) {
+    int[4] arr;
+    arr[0] = fixed_mul(k, *pvec);
+    arr[1] = fixed_mul(k, pvec[1]);
+    *(arr + 8) = fixed_mul(k, pvec[2]);
+    *(arr + 12) = fixed_mul(k, *(pvec + 12));
+    int i = 0;
+    pdst[i] = arr[i]; i = i + 1;
+    pdst[i] = arr[i]; i = i + 1;
+    pdst[i] = arr[i]; i = i + 1;
+    pdst[i] = arr[i];
+  };
 
-(display (toString (functionIR func1)))
-(display (toString (functionIR func2)))
-(display (toString (functionIR func3)))
-(display (toString (functionIR func4)))
-(display (toString (functionIR func5)))
+  void func6() {
+    int[4] pvec;
+    pvec[0] = 0x10000;
+    pvec[1] = 0x20000;
+    pvec[2] = 0x30000;
+    pvec[3] = 0x40000;
+    func5(0x20000, pvec, 0xF000);
+  };
+
+})
+
+(display (toString (programIR all)))
