@@ -69,6 +69,7 @@
   (_ (op_double_left_right_arrow 0) (word "<=>"))
 
   (_ (kw_let 0) (word "let"))
+  (_ (kw_letrec 0) (word "letrec"))
   (_ (kw_in 0) (word "in"))
   (_ (kw_fun 0) (word "fun"))
   (_ (kw_if 0) (word "if"))
@@ -130,6 +131,7 @@
   (nil' (bindings 0) ())
   (period' (bindings 0) ((binding 0) (opt_semicolon 0) (bindings 0)))
   (let' (expr 0) ((kw_let 0) (bindings 0) (kw_in 0) (expr 0))) // Possibly ambiguous
+  (letrec' (expr 0) ((kw_letrec 0) (bindings 0) (kw_in 0) (expr 0))) // Possibly ambiguous
   (fun' (expr 0) ((kw_fun 0) (expr 100) (op_double_right_arrow 0) (expr 0)))
   (if' (expr 0) ((kw_if 0) (expr 1) (kw_then 0) (expr 1) (kw_else 0) (expr 0)))
   (clause' (clause 0) ((expr 100) (op_double_right_arrow 0) (expr 0)))
@@ -175,7 +177,8 @@
 (define_macro iff' (lambda (l _ r) `(iff ,l ,r)))
 
 (define_macro binding' (lambda (sym _ val) `(,sym ,val)))
-(define_macro let' (lambda (_ bindings _ body) `(letrec ,bindings ,body)))
+(define_macro let' (lambda (_ bindings _ body) `(let ,bindings ,body)))
+(define_macro letrec' (lambda (_ bindings _ body) `(letrec ,bindings ,body)))
 (define_macro fun' (lambda (_ arg _ body) `(lambda ,arg ,body)))
 (define_macro if' (lambda (_ c _ t _ f) `(cond ,c ,t ,f)))
 (define_macro clause' (lambda (pat _ val) `(,pat ,val)))
@@ -195,23 +198,26 @@
 (define get_patterns [fun () => match (get_syntax) with (patterns rules) => patterns])
 (define get_rules [fun () => match (get_syntax) with (patterns rules) => rules])
 
-let sum = fun (l) =>
+letrec sum = fun (l) =>
   match l with
   ()       => 0
   (x . xs) => x + (sum xs)
 in (define sum sum)
 
-let concat = fun (l r) =>
+letrec concat = fun (l r) =>
   match l with
   ()       => r
   (x . xs) => (cons x (concat xs r))
 in (define concat concat)
 
+(define symbol_eq [fun (a b) => (string_eq (print a) (print b))])
+(define max [fun (a b) => if a >= b then a else b])
+
 (define add_pattern [fun (pattern) => match (get_syntax) with (patterns rules) => (set_syntax (concat patterns (list pattern)) rules)])
 (define add_rule [fun (rule) => match (get_syntax) with (patterns rules) => (set_syntax patterns (concat rules (list rule)))])
 
 // Helper function for the next one
-let split_rule_rhs = fun (syncats n) =>
+letrec split_rule_rhs = fun (syncats n) =>
   match syncats with
   ()       => (list `() `() `())
   (x . xs) => [
@@ -241,5 +247,5 @@ in (define split_rule_rhs split_rule_rhs)
 // Additional operators
 (add_pattern   [_ <op_double_plus> ::= (word "++")])
 (add_pattern   [_ <op_period_double_plus> ::= (word ".++")])
-(add_rule_auto [concat <expr 70> ::= <expr 70> <op_double_plus>* <expr 71>])
-(add_rule_auto [string_concat <expr 70> ::= <expr 70> <op_period_double_plus>* <expr 71>])
+(add_rule_auto [concat <expr 70> ::= <expr 71> <op_double_plus>* <expr 70>])
+(add_rule_auto [string_concat <expr 70> ::= <expr 71> <op_period_double_plus>* <expr 70>])

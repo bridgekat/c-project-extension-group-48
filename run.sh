@@ -1,1 +1,1 @@
-./testeval prelude.mu compiler.mu
+./testeval prelude.mu compiler.mu examples.mu

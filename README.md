@@ -7,7 +7,7 @@ This repository is an experiment that attempts to make use of the extremely-limi
 - The compiler itself is interpreted.
 - No user-defined types, only supported type is unsigned 32-bit integer. It can be used as pointer as well - there is no difference between integers and pointers. Arrays are treated as pointers to the first element.
 - Statically typed, but without any type checking! You'll get into trouble if you supplied too few or too many arguments to a function...
-- No register allocation (only uses two registers naively).
+- Naive register allocation (relies on the assumption/convention that all registers except `r0` are saved for the caller).
 - No inlining, dead code elimination, or constant propagation, etc.
 - Every function could only have one exit.
 

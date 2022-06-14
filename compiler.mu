@@ -16,10 +16,10 @@
 (add_pattern [_ <kw_int>                    ::= (word "int")])
 (add_pattern [_ <kw_void>                   ::= (word "void")])
 (add_pattern [_ <kw_while>                  ::= (word "while")])
+(add_pattern [_ <kw_return>                 ::= (word "return")])
 
 // Integer expressions
-(add_rule_auto [Parens   <_expr 100> ::= <op_left_paren>* <_expr 0> <op_right_paren>*])
-(add_rule_auto [Block    <_expr 100> ::= <op_left_brace>* <_block> <op_right_brace>*])
+(add_rule_auto [Parens   <_expr 101> ::= <op_left_paren>* <_expr 0> <op_right_paren>*])
 (add_rule_auto [Nat      <_expr 100> ::= <nat64>])
 (add_rule_auto [Var      <_expr 100> ::= <symbol>])
 (add_rule_auto [App      <_expr 100> ::= <symbol> <op_left_paren>* <_arglist> <op_right_paren>*])
@@ -36,8 +36,8 @@
 (add_rule_auto [BitOr    <_expr 65>  ::= <_expr 66> <op_bar>* <_expr 66>])
 (add_rule_auto [BitXor   <_expr 65>  ::= <_expr 66> <op_caret>* <_expr 66>])
 (add_rule_auto [Lsl      <_expr 65>  ::= <_expr 66> <op_double_less>* <_expr 66>])
-(add_rule_auto [Asr      <_expr 65>  ::= <_expr 66> <op_double_greater>* <_expr 66>])
 (add_rule_auto [Lsr      <_expr 65>  ::= <_expr 66> <op_period_double_greater>* <_expr 66>])
+(add_rule_auto [Asr      <_expr 65>  ::= <_expr 66> <op_double_greater>* <_expr 66>])
 (add_rule_auto [Assign   <_expr 60>  ::= <_expr 61> <op_equals>* <_expr 60>])
 
 // Boolean expressions
@@ -55,40 +55,51 @@
 (add_rule_auto [Iff      <_expr 30>  ::= <_expr 30> <op_left_right_arrow>* <_expr 31>])
 */
 
-// Compound expressions
-(add_rule_auto [ArgNil        <_arglist> ::= ])
-(add_rule_auto [ArgOne        <_arglist> ::= <_expr 0>])
-(add_rule_auto [ArgSnoc       <_arglist> ::= <_arglist> <op_comma>* <_expr 0>])
-(add_rule_auto [VarDecl       <_var>     ::= <kw_int>* <symbol>])
-(add_rule_auto [VarArray      <_var>     ::= <kw_int>* <op_left_bracket>* <nat64> <op_right_bracket>* <symbol>])
-(add_rule_auto [VarInit       <_var>     ::= <kw_int>* <symbol> <op_equals>* <_expr 60>])
-(add_rule_auto [BlockExpr     <_block>   ::= <_expr 0> <op_semicolon>*])
-(add_rule_auto [BlockVarCons  <_block>   ::= <_var> <op_semicolon>* <_block>])
-(add_rule_auto [BlockExprCons <_block>   ::= <_expr 0> <op_semicolon>* <_block>])
-(add_rule_auto [If            <_expr 10> ::= <kw_if>* <_expr 11> <kw_then>* <_expr 11> <kw_else>* <_expr 10>])
-(add_rule_auto [While         <_expr 10> ::= <kw_while>* <_expr 11> <_expr 10>])
+// Argument lists
+(add_rule_auto [ArgNil       <_arglist> ::= ])
+(add_rule_auto [ArgOne       <_arglist> ::= <_expr 0>])
+(add_rule_auto [ArgSnoc      <_arglist> ::= <_arglist> <op_comma>* <_expr 0>])
+
+// Block expressions
+(add_rule_auto [ItemExpr     <_item>    ::= <_expr 0> <op_semicolon>*])
+(add_rule_auto [ItemBlock    <_item>    ::= <op_left_brace>* <_block> <op_right_brace>*])
+(add_rule_auto [ItemVarDecl  <_item>    ::= <kw_int>* <symbol> <op_semicolon>*])
+(add_rule_auto [ItemVarArray <_item>    ::= <kw_int>* <op_left_bracket>* <nat64> <op_right_bracket>* <symbol> <op_semicolon>*])
+(add_rule_auto [ItemVarInit  <_item>    ::= <kw_int>* <symbol> <op_equals>* <_expr 0> <op_semicolon>*])
+(add_rule_auto [ItemIf       <_item>    ::= <kw_if>* <_expr 101> <_item>])
+(add_rule_auto [ItemIfElse   <_item>    ::= <kw_if>* <_expr 101> <_item> <kw_else>* <_item>])
+(add_rule_auto [ItemWhile    <_item>    ::= <kw_while>* <_expr 101> <_item>])
+(add_rule_auto [BlockNil     <_block>   ::= ])
+(add_rule_auto [BlockOne     <_block>   ::= <kw_return>* <_item>])
+(add_rule_auto [BlockCons    <_block>   ::= <_item> <_block>])
 
 // Top level declarations
-// (Yes, there is no difference between "void" and "int" as return types!)
-(add_rule      [_             <_void_int>  ::= <kw_void>])
-(add_rule      [_             <_void_int>  ::= <kw_int>])
-(add_rule      [ParamNil'     <_paramlist> ::= ])
-(add_rule      [ParamOne'     <_paramlist> ::= <kw_int> <symbol>])
-(add_rule      [ParamCons'    <_paramlist> ::= <kw_int> <symbol> <op_comma> <_paramlist>])
-(add_rule_auto [Func          <_func>      ::= <_void_int>* <symbol> <op_left_paren>* <_paramlist> <op_right_paren>* <_expr 0> <op_semicolon>*])
-(add_rule_auto [DeclNil       <_decls>     ::= ])
-(add_rule_auto [DeclCons      <_decls>     ::= <_func> <_decls>])
-(add_rule      [Top'          <tree 0>     ::= <op_left_brace> <_decls> <op_right_brace>])
+// (Yes, there is no difference between "void" and "int" as return types... at least for now)
+(add_rule      [_            <_void_int>  ::= <kw_void>])
+(add_rule      [_            <_void_int>  ::= <kw_int>])
+(add_rule      [ParamNil'    <_paramlist> ::= ])
+(add_rule      [ParamOne'    <_paramlist> ::= <kw_int> <symbol>])
+(add_rule      [ParamCons'   <_paramlist> ::= <kw_int> <symbol> <op_comma> <_paramlist>])
+(add_rule_auto [Func         <_func>      ::= <_void_int>* <symbol> <op_left_paren>* <_paramlist> <op_right_paren>*
+                                              <op_left_brace>* <_block> <op_right_brace>*])
+(add_rule      [DeclNil'     <_decls>     ::= ])
+(add_rule      [DeclCons'    <_decls>     ::= <_func> <_decls>])
+(add_rule      [Top'         <tree 0>     ::= <op_left_brace> <_decls> <op_right_brace>])
 (define_macro ParamNil'  [fun ()        => `()])
 (define_macro ParamOne'  [fun (_ x)     => `((Int ,x))])
 (define_macro ParamCons' [fun (_ l _ r) => `((Int ,l) . ,r)])
+(define_macro DeclNil'   [fun ()        => `()])
+(define_macro DeclCons'  [fun (l r)     => `(,l . ,r)])
 (define_macro Top'       [fun (_ x _)   => `(quote ,x)])
 
 // ===============================
 // Main procedures for compilation
 // ===============================
 
-let
+(add_pattern   [_ <op_period_double_plus_period> ::= (word ".++.")])
+(add_rule_auto [concatIR <expr 70> ::= <expr 71> <op_period_double_plus_period>* <expr 70>])
+
+letrec
 
   /*
   * StackInfo: list of
@@ -96,8 +107,10 @@ let
   *   (IntArray <name> <size>)
   *
   * LinearIR:
-  *   (Lvalue <code>): final value of register 0 is considered as memory address
-  *   (Rvalue <code>): final value of register 0 is considered as value
+  *   (Lvalue <regnum> <code>): final value of register 1 is considered as memory address
+  *   (Rvalue <regnum> <code>): final value of register 1 is considered as value
+  *   (Nvalue <regnum> <code>): final value of register 1 is undefined
+  *   where <regnum>: number of registers modified by <code>, always >= 1
   *
   * Code: list of
   *   (Const <regid> <value>):          constant into register
@@ -112,19 +125,20 @@ let
   *   (Add <regid> <regid> <regid>)...: binary arithmetic instructions
   *   (Label <id>):                     label
   *   (Jump <id>):                      jump to label
-  *   (JumpZero <id>):                  if register 0 is zero then jump to label
+  *   (JumpZero <regid> <id>):          if given register is zero then jump to label
   *   (Func <name>):                    function label
-  *   (Call <name>):                    jump with link (call function)
-  *   (Return):                         jump back to linked position (return)
+  *   (Call <regid> <name>):            call function, copying return value on register 0 to some register
+  *   (Save <regid>):                   save return value to register 0
+  *   (Return):                         jump back to linked position
   */
 
-  symbol_eq = fun (a b) => (string_eq (print a) (print b))
+  numRegs = 12
   lr = 14
   labelCount = 0
 
   // Returns the offset of a local variable
   lookup = fun (v stackInfo) =>
-    let lookup' = fun (v stackInfo acc) => [
+    letrec lookup' = fun (v stackInfo acc) => [
       match stackInfo with (x . xs) => [
         match x with
         (`Int name)           => if (symbol_eq v name) then `(Lvalue ,acc) else (lookup' v xs [acc + 1])
@@ -136,8 +150,8 @@ let
   // Use it before surrounding code with Push/Pop pairs
   makeGap = fun (code n k) => [
     match code with
-    ()        => ()
-    (x . xs)  => [
+    ()       => ()
+    (x . xs) => [
       match x with
       (`Local regid index) => (cons (list `Local regid [if index >= n then [index + k] else index]) (makeGap xs n k))
       (`Push regid)        => (cons x (makeGap xs [n + 1] k))
@@ -148,162 +162,225 @@ let
     ]
   ]
 
-  // Merges two pieces of code, with register 1 holding the result of a and register 0 holding the result of b
-  merge = fun (a b) => a ++ `((Push 0)) ++ (makeGap b 0 1) ++ `((Pop 1))
+  // Applies function f to all register names that appear in the code
+  updateRegs = fun (f code) => [
+    match code with
+    ()       => `()
+    (x . xs) => (cons [
+      match x with
+      (`Const regid value) => `(Const ,(f regid) ,value)
+      (`Local regid index) => `(Local ,(f regid) ,index)
+      (`Push regid)        => `(Push ,(f regid))
+      (`Pop  regid)        => `(Pop  ,(f regid))
+      (`PushN num)         => x
+      (`PopN num)          => x
+      (`Label id)          => x
+      (`Jump id)           => x
+      (`JumpZero regid id) => `(JumpZero ,(f regid) ,id)
+      (`Func name)         => x
+      (`Call regid name)   => `(Call ,(f regid) ,name)
+      (`Save regid)        => `(Save ,(f regid))
+      (`Return)            => x
+      (unop  rd rn)        => `(,unop  ,(f rd) ,(f rn))
+      (binop rd rn rm)     => `(,binop ,(f rd) ,(f rn) ,(f rm))
+    ] (updateRegs f xs))
+  ]
+
+  // Increases all nonzero register indices by 1, vacating register 1 from code
+  // (We assume in the calling convention that functions save all registers except 0 for the caller)
+  vacate1 = fun (code) =>
+    (updateRegs [fun (n) => if n == 0 then 0 else n + 1] code)
+
+  // Swaps registers 1 and 2
+  swap12 = fun (code) =>
+    (updateRegs [fun (n) => if n == 1 then 2 else if n == 2 then 1 else n] code)
+
+  // Concatenates two pieces of IR, only preserving the result of the last one
+  concatIR = fun ((_ lhsRn lhsCode) (type rhsRn rhsCode)) =>
+    `(,type ,(max lhsRn rhsRn) ,[lhsCode ++ rhsCode])
+
+  // Merges two pieces of IR, with register 1 holding the result of LHS and register 2 holding the result of RHS
+  // Pre: lhsRn <= numRegs && rhsRn <= numRegs
+  mergeIR = fun ((type lhsRn lhsCode) (_ rhsRn rhsCode)) =>
+    if rhsRn < numRegs then `(,type ,(max lhsRn [rhsRn + 1]) ,[lhsCode ++ (vacate1 rhsCode)])
+    else `(,type ,numRegs ,[lhsCode ++ `((Push 1)) ++ (swap12 (makeGap rhsCode 0 1)) ++ `((Pop 1))])
+
+  // Expects an IR to return an lvalue
+  expectLvalue = fun (x) => [
+    match x with
+    (`Lvalue rn code) => `(Lvalue ,rn ,code)
+  ]
 
   // If IR is already an rvalue, does nothing; otherwise converts it to an rvalue by inserting a Load instruction
   makeRvalue = fun (x) => [
     match x with
-    (`Lvalue code) => `(Rvalue ,[code ++ `((Load 0 0))])
-    (`Rvalue code) => `(Rvalue ,code)
+    (`Lvalue rn code) => `(Rvalue ,rn ,[code ++ `((Load 1 1))])
+    (`Rvalue rn code) => `(Rvalue ,rn ,code)
   ]
 
   // More permissive version (for functions with undefined return values)
   makeRvalue_ = fun (x) => [
     match x with
-    (`Lvalue code) => `(Rvalue ,[code ++ `((Load 0 0))])
-    (`Rvalue code) => `(Rvalue ,code)
-    (`Nvalue code) => `(Rvalue ,code) // Undefined!
+    (`Lvalue rn code) => `(Rvalue ,rn ,[code ++ `((Load 1 1))])
+    (`Rvalue rn code) => `(Rvalue ,rn ,code)
+    (`Nvalue rn code) => `(Rvalue ,rn ,code) // Undefined!
   ]
 
   // Converts an expression to IR
   exprIR = fun (x stackInfo) => [
     match x with
-    (`Parens e)       => (exprIR e stackInfo)
-    (`Block b)        => (blockIR b stackInfo)
-    (`Nat n)          => `(Rvalue ((Const 0 ,n)))
-    (`Var v)          => [match (lookup v stackInfo) with (type index) => `(,type ((Local 0 ,index)))]
-    (`Ref e)          => [match (exprIR e stackInfo) with (`Lvalue code) => `(Rvalue ,code)]
-    (`Deref e)        => [match (makeRvalue (exprIR e stackInfo)) with (`Rvalue code) => `(Lvalue ,code)]
-    (`Access lhs rhs) => [
-      match (makeRvalue (exprIR lhs stackInfo)) with (`Rvalue lhsCode) => [
-        match (makeRvalue (exprIR rhs stackInfo)) with (`Rvalue rhsCode) =>
-          `(Lvalue ,[(merge lhsCode rhsCode) ++ `((Add4 0 1 0))]) // Temporary fix when no type checking...
-    ]]
-    (`Assign lhs rhs) => [
-      match (exprIR lhs stackInfo) with (`Lvalue lhsCode) => [
-        match (makeRvalue (exprIR rhs stackInfo)) with (`Rvalue rhsCode) =>
-          `(Lvalue ,[(merge rhsCode lhsCode) ++ `((Store 1 0))])
-    ]]
-    (`If e lhs rhs)   => [
-      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue condCode) => [
-        match (makeRvalue (exprIR lhs stackInfo)) with (`Rvalue lhsCode) => [
-          match (makeRvalue (exprIR rhs stackInfo)) with (`Rvalue rhsCode) => [
-            begin
-              labelCount = labelCount + 2;
-              let falseLabel = labelCount - 2; endLabel = labelCount - 1 in
-                `(Rvalue ,[
-                  condCode ++ `((JumpZero ,falseLabel)) ++
-                  lhsCode ++ `((Jump ,endLabel)) ++
-                  `((Label ,falseLabel)) ++ rhsCode ++ `((Label ,endLabel))
-                ])
-    ]]]]
-    (`While e body)   => [
-      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue condCode) => [
-        match (exprIR body stackInfo) with (type code) => [
-          begin
-            labelCount = labelCount + 2;
-            let beginLabel = labelCount - 2; endLabel = labelCount - 1 in
-              `(Nvalue ,[
-                `((Label ,beginLabel)) ++ condCode ++ `((JumpZero ,endLabel)) ++
-                code ++ `((Jump ,beginLabel)) ++ `((Label ,endLabel))
-              ])
-    ]]]
-    // Assuming CDECL convention: caller clean-up (this allows Push/Pops in the IR to pair up)
-    // We don't care about other registers, as long as register 0 contains the return value
+    (`Parens e)         => (exprIR e stackInfo)
+    (`Block b)          => (blockIR b stackInfo)
+    (`Nat n)            => `(Rvalue 2 ((Const 1 ,n)))
+    (`Var v)            => [match (lookup v stackInfo) with (type index) => `(,type 2 ((Local 1 ,index)))]
+    (`Ref e)            => [match (exprIR e stackInfo) with (`Lvalue rn code) => `(Rvalue ,rn ,code)]
+    (`Deref e)          => [match (makeRvalue (exprIR e stackInfo)) with (`Rvalue rn code) => `(Lvalue ,rn ,code)]
+    (`Access lhs rhs)   =>
+      let lhs = (makeRvalue (exprIR lhs stackInfo))
+          rhs = (makeRvalue (exprIR rhs stackInfo))
+      in (mergeIR lhs rhs) .++. `(Lvalue 3 ((Add4 1 1 2)))
+    (`Assign lhs rhs)   =>
+      let lhs = (expectLvalue (exprIR lhs stackInfo))
+          rhs = (makeRvalue (exprIR rhs stackInfo))
+      in (mergeIR lhs rhs) .++. `(Lvalue 3 ((Store 2 1)))
+    // Assuming CDECL convention: caller clean-up (this allows Push/Pops in the IR to pair up).
+    // Return value is copied from register 0 to 1. All other registers are unmodified by assumption
     (`App name args)  => [
-      match (arglistIR args stackInfo) with (n code) =>
-        `(Rvalue ,[code ++ `((Call ,(print name)) (PopN ,n))])
+      match (arglistIR args stackInfo 0 `(Nvalue 0 ())) with (n code) =>
+        code .++. `(Rvalue 2 ((Call 1 ,(print name)) (PopN ,n)))
     ]
     // The rest are all unary or binary arithmetic operations
-    (unop e)          => [match (makeRvalue (exprIR e stackInfo)) with (`Rvalue code) => `(Rvalue ,[code ++ `((,unop 0 0))])]
+    (unop e)          => [
+      let code = (makeRvalue (exprIR e stackInfo))
+      in code .++. `(Rvalue 2 ((,unop 1 1)))
+    ]
     (binop lhs rhs)   => [
-      match (makeRvalue (exprIR lhs stackInfo)) with (`Rvalue lhsCode) => [
-        match (makeRvalue (exprIR rhs stackInfo)) with (`Rvalue rhsCode) =>
-          `(Rvalue ,[(merge lhsCode rhsCode) ++ `((,binop 0 1 0))])
-    ]]
+      let lhs = (makeRvalue (exprIR lhs stackInfo))
+          rhs = (makeRvalue (exprIR rhs stackInfo))
+      in (mergeIR lhs rhs) .++. `(Rvalue 3 ((,binop 1 1 2)))
+    ]
   ]
 
   // Converts an arglist to (<num args> <code>)
   // <code> is responsible for pushing arguments onto stack, from right to left
-  arglistIR = fun (x stackInfo) => [
+  arglistIR = fun (x stackInfo n acc) => [
     match x with
-    (`ArgNil)       => (list 0 (nil))
+    (`ArgNil)       => `(,n ,acc)
     (`ArgOne e)     => [
-      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue code) =>
-        (list 1 [code ++ `((Push 0))])
+      let curr = (makeRvalue (exprIR e stackInfo))
+      in `(,[n + 1] ,[acc .++. curr .++. `(Nvalue 2 ((Push 1)))])
     ]
     (`ArgSnoc es e) => [
-      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue rhsCode) => [
-        match (arglistIR es stackInfo) with (n lhsCode) =>
-          (list [n + 1] [rhsCode ++ `((Push 0)) ++ (makeGap lhsCode 0 1)])
-    ]]
+      let curr = (makeRvalue (exprIR e stackInfo))
+      in (arglistIR es (cons `(Int "") stackInfo) [n + 1] [acc .++. curr .++. `(Nvalue 2 ((Push 1)))])
+    ]
   ]
 
   // Converts a block to IR
   blockIR = fun (x stackInfo) => [
     match x with
-    (`BlockExpr e)                        => (exprIR e stackInfo)
-    (`BlockVarCons (`VarDecl name) es)    => [
-      match (blockIR es (cons `(Int ,name) stackInfo)) with (type code) =>
-        `(,type ,[`((PushN 1)) ++ code ++ `((PopN 1))])
+    (`ItemExpr e)                             => (exprIR e stackInfo)
+    (`ItemBlock b)                            => (blockIR b stackInfo)
+    (`BlockCons (`ItemVarDecl name) xs)       => [
+      match (blockIR xs (cons `(Int ,name) stackInfo)) with (type rn code) =>
+        `(,type ,rn ,[`((PushN 1)) ++ code ++ `((PopN 1))])
     ]
-    (`BlockVarCons (`VarArray size name) es) => [
-      match (blockIR es (cons `(IntArray ,name ,size) stackInfo)) with (type code) =>
-        `(,type ,[`((PushN ,size)) ++ code ++ `((PopN ,size))])
+    (`BlockCons (`ItemVarArray size name) xs) => [
+      match (blockIR xs (cons `(IntArray ,name ,size) stackInfo)) with (type rn code) =>
+        `(,type ,rn ,[`((PushN ,size)) ++ code ++ `((PopN ,size))])
     ]
-    (`BlockVarCons (`VarInit name e) es)  => [
-      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue initCode) => [
-        match (blockIR es (cons `(Int ,name) stackInfo)) with (type code) =>
-          `(,type ,[initCode ++ `((Push 0)) ++ code ++ `((PopN 1))])
+    (`BlockCons (`ItemVarInit name e) xs)     => [
+      match (makeRvalue (exprIR e stackInfo)) with (`Rvalue lhsRn lhsCode) => [
+        match (blockIR xs (cons `(Int ,name) stackInfo)) with (type rhsRn rhsCode) =>
+          `(,type ,(max lhsRn rhsRn) ,[lhsCode ++ `((Push 1)) ++ rhsCode ++ `((PopN 1))])
       ]
     ]
-    (`BlockExprCons e es)                 => [
-      match (exprIR e stackInfo) with (_ lhsCode) => [
-        match (blockIR es stackInfo) with (type rhsCode) =>
-          `(,type ,[lhsCode ++ rhsCode])
-      ]
+    (`ItemIf e body) => [
+      let cond = (makeRvalue (exprIR e stackInfo))
+          body = (blockIR body stackInfo)
+          falseLabel = labelCount
+      in begin
+        labelCount = labelCount + 1;
+             cond
+        .++. `(Nvalue 2 ((JumpZero 1 ,falseLabel)))
+        .++. body
+        .++. `(Nvalue 0 ((Label ,falseLabel)))
     ]
+    (`ItemIfElse e lhs rhs) => [
+      let cond = (makeRvalue (exprIR e stackInfo))
+          lhs = (blockIR lhs stackInfo)
+          rhs = (blockIR rhs stackInfo)
+          falseLabel = labelCount
+          endLabel = labelCount + 1
+      in begin
+        labelCount = labelCount + 2;
+             cond
+        .++. `(Nvalue 2 ((JumpZero 1 ,falseLabel)))
+        .++. lhs
+        .++. `(Nvalue 0 ((Jump ,endLabel)))
+        .++. `(Nvalue 0 ((Label ,falseLabel)))
+        .++. rhs
+        .++. `(Nvalue 0 ((Label ,endLabel)))
+    ]
+    (`ItemWhile e body) => [
+      let cond = (makeRvalue (exprIR e stackInfo))
+          body = (blockIR body stackInfo)
+          beginLabel = labelCount
+          endLabel = labelCount + 1
+      in begin
+        labelCount = labelCount + 2;
+             `(Nvalue 0 ((Label ,beginLabel)))
+        .++. cond
+        .++. `(Nvalue 2 ((JumpZero 1 ,endLabel)))
+        .++. body
+        .++. `(Nvalue 0 ((Jump ,beginLabel)))
+        .++. `(Nvalue 0 ((Label ,endLabel)))
+    ]
+    (`BlockNil)       => `(Nvalue 0 ())
+    (`BlockOne x)     => (blockIR x stackInfo)
+    (`BlockCons x xs) => (blockIR x stackInfo) .++. (blockIR xs stackInfo)
   ]
 
   // Checks if the given code contains a function call (so that we need to save LR on the stack)
-  // (Registers 4+ are never used so we don't need to save them.)
   hasCall = fun (x) => [
     match x with
-    ()              => false
-    ((`Call _) . _) => true
-    (_ . xs)        => (hasCall xs)
+    ()                => false
+    ((`Call _ _) . _) => true
+    (_ . xs)          => (hasCall xs)
   ]
 
+  // Preservation of (general purpose) registers
+  wrap = fun (n code) =>
+    if n <= 1 then code
+    else `((Push ,[n - 1])) ++ (makeGap (wrap [n - 1] code) 0 1) ++ `((Pop ,[n - 1]))
+
   // Converts a function to IR code
-  functionIR = fun ((`Func name params (`Block block))) => [
-    match (makeRvalue_ (blockIR block params)) with (`Rvalue code) =>
-      if (hasCall code)
-      then `((Func ,(print name)) (Push ,lr)) ++ (makeGap code 0 1) ++ `((Pop ,lr) (Return))
-      else `((Func ,(print name))) ++ code ++ `((Return))
+  functionIR = fun ((`Func name params block)) => [
+    match (makeRvalue_ (blockIR block params)) with (`Rvalue rn code) =>
+      let code = (wrap rn [code ++ `((Save 1))]) in
+      let code = if (hasCall code) then `((Push ,lr)) ++ (makeGap code 0 1) ++ `((Pop ,lr)) else code in
+        `((Func ,(print name))) ++ code ++ `((Return))
   ]
 
   // Converts a program (a list of function definitions) to IR code
   programIR = fun (x) => [
     match x with
-    (`DeclNil)       => (nil)
-    (`DeclCons d ds) => (functionIR d) ++ (programIR ds)
+    ()       => (nil)
+    (d . ds) => (functionIR d) ++ (programIR ds)
   ]
 
   // Converts IR code to ARM assembly
   toString = fun (x) => [
     match x with
     // Shortcuts (better than nothing...)
-    ((`Le 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bgt l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Lt 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bge l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Ge 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "blt l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Gt 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "ble l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Eq 0 rn rm) (`JumpZero id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bne l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Neq 0 rn rm) (`JumpZero id) . xs) => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "beq l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Local 0 index) (`Load 0 0) . xs)                      => "ldr r0, [sp, #" .++ (print [index * 4]) .++ "]\n" .++ (toString xs)
-    ((`Push 0) (`Local 0 index) (`Pop 1) (`Store 1 0) . xs)  => "str r0, [sp, #" .++ (print [[index - 1] * 4]) .++ "]\n" .++ (toString xs)
-    ((`Push 0) (`Const 0 const) (`Pop 1) (`Add 0 1 0) . xs)  => "add r0, r0, #" .++ (print const) .++ "\n" .++ (toString xs)
-    ((`Push 0) (`Const 0 const) (`Pop 1) (`Add4 0 1 0) . xs) => "add r0, r0, #" .++ (print [const * 4]) .++ "\n" .++ (toString xs) // Temporary fix
+    // WARNING: some of these are unsound, more checks required
+    ((`Le _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bgt l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Lt _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bge l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Ge _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "blt l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Gt _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "ble l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Eq _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bne l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Neq _ rn rm) (`JumpZero _ id) . xs) => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "beq l" .++ (print id) .++ "\n" .++ (toString xs)
+    ((`Local r index) (`Load _ _) . xs)  => "ldr r" .++ (print r) .++ ", [sp, #" .++ (print [index * 4]) .++ "]\n" .++ (toString xs)
     ((`PopN 0) . xs)           => (toString xs)
     ((`PopN a) (`PopN b) . xs) => (toString `((PopN ,[a + b]) . ,xs))
     // Single instructions
@@ -320,9 +397,10 @@ let
       (`Store regid addr)   => "str r" .++ (print regid) .++ ", [r" .++ (print addr) .++ "]"
       (`Label id)           => "l" .++ (print id) .++ ":"
       (`Jump id)            => "b l" .++ (print id)
-      (`JumpZero id)        => "tst r0, r0\n" .++ "beq l" .++ (print id)
+      (`JumpZero regid id)  => "tst r" .++ (print regid) .++ ", r" .++ (print regid) .++ "\n" .++ "beq l" .++ (print id)
       (`Func name)          => "\n" .++ name .++ ":"
-      (`Call name)          => "bl " .++ name
+      (`Call regid name)    => "bl " .++ name .++ "\n" .++ "mov r" .++ (print regid) .++ ", r0"
+      (`Save regid)         => "mov r0, r" .++ (print regid)
       (`Return)             => "bx lr"
       (`Minus rd rn)        => "rsb r" .++ (print rd) .++ ", r" .++ (print rd) .++ ", #0"
       (`Add rd rn rm)       => "add r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
@@ -335,14 +413,14 @@ let
       (`BitOr rd rn rm)     => "orr r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
       (`BitXor rd rn rm)    => "eor r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", r" .++ (print rm)
       (`Lsl rd rn rm)       => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", lsl r" .++ (print rm)
-      (`Asr rd rn rm)       => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", asr r" .++ (print rm)
       (`Lsr rd rn rm)       => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", lsr r" .++ (print rm)
-      (`Le rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movle r0, #1"
-      (`Lt rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movlt r0, #1"
-      (`Ge rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movge r0, #1"
-      (`Gt rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movgt r0, #1"
-      (`Eq rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "moveq r0, #1"
-      (`Neq rd rn rm)       => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r0, #0\n" .++ "movne r0, #1"
+      (`Asr rd rn rm)       => "mov r" .++ (print rd) .++ ", r" .++ (print rn) .++ ", asr r" .++ (print rm)
+      (`Le rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r" .++ (print rd) .++ ", #0\n" .++ "movle r" .++ (print rd) .++ ", #1"
+      (`Lt rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r" .++ (print rd) .++ ", #0\n" .++ "movlt r" .++ (print rd) .++ ", #1"
+      (`Ge rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r" .++ (print rd) .++ ", #0\n" .++ "movge r" .++ (print rd) .++ ", #1"
+      (`Gt rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r" .++ (print rd) .++ ", #0\n" .++ "movgt r" .++ (print rd) .++ ", #1"
+      (`Eq rd rn rm)        => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r" .++ (print rd) .++ ", #0\n" .++ "moveq r" .++ (print rd) .++ ", #1"
+      (`Neq rd rn rm)       => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "mov r" .++ (print rd) .++ ", #0\n" .++ "movne r" .++ (print rd) .++ ", #1"
     ] .++ "\n" .++ (toString xs)
   ]
 
@@ -353,69 +431,3 @@ in [begin
   (define programIR programIR)
   (define toString toString)
 ]
-
-// =============
-// Test programs
-// =============
-
-(define all {
-
-  int func1(int x, int y) {
-    int z;
-    z = y;
-    z * 0x10000 + x * 0x10;
-  };
-
-  int func2(int x, int y) {
-    if (x > y) then x else y;
-  };
-
-  int func3(int n) {
-    int a = 1;
-    int b = 1;
-    while (b <= n) {
-      int c = a + b;
-      a = b;
-      b = c;
-    };
-    b;
-  };
-
-  void func4(int n, int m) {
-    int p = 233;
-    int i = 0;
-    while (i < n) {
-      int j = 0;
-      while (j < m) {
-        p[i * m + j] = 0;
-        j = j + 1;
-      };
-      i = i + 1;
-    };
-  };
-
-  void func5(int k, int pvec, int pdst) {
-    int[4] arr;
-    arr[0] = fixed_mul(k, *pvec);
-    arr[1] = fixed_mul(k, pvec[1]);
-    *(arr + 8) = fixed_mul(k, pvec[2]);
-    *(arr + 12) = fixed_mul(k, *(pvec + 12));
-    int i = 0;
-    pdst[i] = arr[i]; i = i + 1;
-    pdst[i] = arr[i]; i = i + 1;
-    pdst[i] = arr[i]; i = i + 1;
-    pdst[i] = arr[i];
-  };
-
-  void func6() {
-    int[4] pvec;
-    pvec[0] = 0x10000;
-    pvec[1] = 0x20000;
-    pvec[2] = 0x30000;
-    pvec[3] = 0x40000;
-    func5(0x20000, pvec, 0xF000);
-  };
-
-})
-
-(display (toString (programIR all)))
