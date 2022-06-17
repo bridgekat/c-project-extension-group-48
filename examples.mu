@@ -41,7 +41,7 @@
   }
 
   void func5(int k, int pvec, int pdst) {
-    int[4] arr;
+    int arr[4];
     arr[0] = fixed_mul(k, *pvec);
     arr[1] = fixed_mul(k, pvec[1]);
     *(arr + 8) = fixed_mul(k, pvec[2]);
@@ -54,7 +54,7 @@
   }
 
   void func6() {
-    int[4] pvec;
+    int pvec[4];
     pvec[0] = 0x10000;
     pvec[1] = 0x20000;
     pvec[2] = 0x30000;
@@ -64,4 +64,11 @@
 
 })
 
-(display (toString (programIR all)))
+[begin
+  (debug_save_file "compiled.s" (toString (programIR all)));
+  (display "");
+  (display "==========================================");
+  (display "Compilation succeeded!");
+  (display "Assembly has been written to \"compiled.s\".");
+  (display "==========================================");
+  (display "")]

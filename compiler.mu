@@ -64,7 +64,7 @@
 (add_rule_auto [ItemExpr     <_item>    ::= <_expr 0> <op_semicolon>*])
 (add_rule_auto [ItemBlock    <_item>    ::= <op_left_brace>* <_block> <op_right_brace>*])
 (add_rule_auto [ItemVarDecl  <_item>    ::= <kw_int>* <symbol> <op_semicolon>*])
-(add_rule_auto [ItemVarArray <_item>    ::= <kw_int>* <op_left_bracket>* <nat64> <op_right_bracket>* <symbol> <op_semicolon>*])
+(add_rule_auto [ItemVarArray <_item>    ::= <kw_int>* <symbol> <op_left_bracket>* <nat64> <op_right_bracket>* <op_semicolon>*])
 (add_rule_auto [ItemVarInit  <_item>    ::= <kw_int>* <symbol> <op_equals>* <_expr 0> <op_semicolon>*])
 (add_rule_auto [ItemIf       <_item>    ::= <kw_if>* <_expr 101> <_item>])
 (add_rule_auto [ItemIfElse   <_item>    ::= <kw_if>* <_expr 101> <_item> <kw_else>* <_item>])
@@ -133,7 +133,6 @@ letrec
   */
 
   numRegs = 12
-  lr = 14
   labelCount = 0
 
   // Returns the offset of a local variable
@@ -219,7 +218,8 @@ letrec
   ]
 
   // More permissive version (for functions with undefined return values)
-  makeRvalue_ = fun (x) => [
+  // (TODO: actually distinguish between `void` and `int` return types)
+  forceRvalue = fun (x) => [
     match x with
     (`Lvalue rn code) => `(Rvalue ,rn ,[code ++ `((Load 1 1))])
     (`Rvalue rn code) => `(Rvalue ,rn ,code)
@@ -229,17 +229,17 @@ letrec
   // Converts an expression to IR
   exprIR = fun (x stackInfo) => [
     match x with
-    (`Parens e)         => (exprIR e stackInfo)
-    (`Block b)          => (blockIR b stackInfo)
-    (`Nat n)            => `(Rvalue 2 ((Const 1 ,n)))
-    (`Var v)            => [match (lookup v stackInfo) with (type index) => `(,type 2 ((Local 1 ,index)))]
-    (`Ref e)            => [match (exprIR e stackInfo) with (`Lvalue rn code) => `(Rvalue ,rn ,code)]
-    (`Deref e)          => [match (makeRvalue (exprIR e stackInfo)) with (`Rvalue rn code) => `(Lvalue ,rn ,code)]
-    (`Access lhs rhs)   =>
+    (`Parens e)       => (exprIR e stackInfo)
+    (`Block b)        => (blockIR b stackInfo)
+    (`Nat n)          => `(Rvalue 2 ((Const 1 ,n)))
+    (`Var v)          => [match (lookup v stackInfo) with (type index) => `(,type 2 ((Local 1 ,index)))]
+    (`Ref e)          => [match (exprIR e stackInfo) with (`Lvalue rn code) => `(Rvalue ,rn ,code)]
+    (`Deref e)        => [match (makeRvalue (exprIR e stackInfo)) with (`Rvalue rn code) => `(Lvalue ,rn ,code)]
+    (`Access lhs rhs) =>
       let lhs = (makeRvalue (exprIR lhs stackInfo))
           rhs = (makeRvalue (exprIR rhs stackInfo))
       in (mergeIR lhs rhs) .++. `(Lvalue 3 ((Add4 1 1 2)))
-    (`Assign lhs rhs)   =>
+    (`Assign lhs rhs) =>
       let lhs = (expectLvalue (exprIR lhs stackInfo))
           rhs = (makeRvalue (exprIR rhs stackInfo))
       in (mergeIR lhs rhs) .++. `(Lvalue 3 ((Store 2 1)))
@@ -285,7 +285,7 @@ letrec
       match (blockIR xs (cons `(Int ,name) stackInfo)) with (type rn code) =>
         `(,type ,rn ,[`((PushN 1)) ++ code ++ `((PopN 1))])
     ]
-    (`BlockCons (`ItemVarArray size name) xs) => [
+    (`BlockCons (`ItemVarArray name size) xs) => [
       match (blockIR xs (cons `(IntArray ,name ,size) stackInfo)) with (type rn code) =>
         `(,type ,rn ,[`((PushN ,size)) ++ code ++ `((PopN ,size))])
     ]
@@ -356,9 +356,9 @@ letrec
 
   // Converts a function to IR code
   functionIR = fun ((`Func name params block)) => [
-    match (makeRvalue_ (blockIR block params)) with (`Rvalue rn code) =>
+    match (forceRvalue (blockIR block params)) with (`Rvalue rn code) =>
       let code = (wrap rn [code ++ `((Save 1))]) in
-      let code = if (hasCall code) then `((Push ,lr)) ++ (makeGap code 0 1) ++ `((Pop ,lr)) else code in
+      let code = if (hasCall code) then `((PushLr)) ++ (makeGap code 0 1) ++ `((PopLr)) else code in
         `((Func ,(print name))) ++ code ++ `((Return))
   ]
 
@@ -389,7 +389,9 @@ letrec
       match x with
       (`Const regid value)  => "ldr r" .++ (print regid) .++ ", =" .++ (print value)
       (`Local regid index)  => "add r" .++ (print regid) .++ ", sp, #" .++ (print [index * 4])
+      (`PushLr)             => "push { lr }"
       (`Push regid)         => "push { r" .++ (print regid) .++ " }"
+      (`PopLr)              => "pop { lr }"
       (`Pop regid)          => "pop { r" .++ (print regid) .++ " }"
       (`PushN num)          => "sub sp, sp, #" .++ (print [num * 4])
       (`PopN num)           => "add sp, sp, #" .++ (print [num * 4])
