@@ -1,5 +1,7 @@
 # C Project Extension - Group 48 (2022)
 
+*Bingqi Li, Haoran Wang, Leven Zhou, Zhanrong Qiao*
+
 > ... We extended the emulator and assembler to support more instructions (those used in function calls, including `PUSH`, `POP`, `BL` and `BX`), and enabled the emulator to dump a part of its memory as a bitmap file (so that we could have graphical output from the emulator). We then used Zhanrong’s side project, an interpreter for a Scheme-like language, to implement a compiler that could turn a tiny subset of C into the subset of ARM assembly supported by our emulator. With its help, we were able to build a simple ray tracer that runs on our emulator. Finally, Haoran (the only Computing student in our group) implemented a post-processing filter that adds to the bitmap output some artistic quality. This was done in standard C.
 
 This repository contains the source code of our **compiler** and **ray tracer**, in case anyone wish to try them out on their own implementation of the assembler and emulator.
@@ -28,8 +30,8 @@ Note that the compiler also generates instructions beyond the coursework specifi
 
 1. Special names, `sp`, `lr` and `pc`, will be used for registers 13, 14 and 15, respectively;
 2. You will need to implement "Branch with link" (`bl`) and "branch and exchange" (`bx`);
-3. Also there are "stack operations" (`push { ... }` and `pop { ... }`). Note that the stack is assumed to be descending, with `sp` pointing to the last element itself ("full" mode). Support for `ldm` and `stm` is not necessary (the compiler is too dumb to make use of them).
-4. If you have used signed (`/`) or unsigned (`./`) integer division in your program, you will need to handle `sdiv` and `udiv` instructions (the format is `sdiv/udiv Rd, Rn, Rm`, just like the multiply instruction).
+3. Also there are "stack operations" (`push { ... }` and `pop { ... }`). Note that the stack is assumed to be descending, with `sp` pointing to the last element itself ("full" mode). *Support for `ldm` and `stm` is not necessary. The compiler is too dumb to make use of them.*
+4. If you have used signed (`/`) or unsigned (`./`) integer division in your program, you will need to handle `sdiv` and `udiv` instructions (the format is `sdiv/udiv Rd, Rn, Rm`, just like the multiply instruction). *The ray tracer does not depend on these.*
 
 The calling convention is not found in any standard -- it was invented to simplify things:
 
@@ -50,8 +52,8 @@ Invoke `make` from the [`extension`](extension) directory to compile and assembl
 
 When executed by your emulator, **it will put pixel data into a designated part of the emulator's memory**. This part is called the "framebuffer". As mentioned in [`extension/entry.s`](extension/entry.s), some arguments will need to be specified by the emulator before the program starts:
 
-1. The **stack pointer `sp`**. Since the stack is assumed to be descending, you should give `sp` an initial value large enough to prevent stack overflow. (We used 524288)
-2. The initial value of `*sp` should be a 32-bit integer indicating the **starting address of the framebuffer (in bytes)**. You can set it to be the same as `sp` (i.e. place the framebuffer immediately after the stack) but anywhere convenient will be OK.
+1. The **stack pointer `sp`**. Since the stack is assumed to be descending, you should give `sp` an initial value large enough to prevent stack overflow. (We used 524276)
+2. The initial value of `*sp` should be a 32-bit integer indicating the **starting address of the framebuffer (in bytes)**. You can set it to be `sp + 12` (i.e. place the framebuffer immediately after the stack) but anywhere convenient will be OK.
 3. The initial value of `*(sp + 4)` should be a 32-bit integer indicating the **width of the framebuffer (in pixels)**. Similarly, `*(sp + 8)` should be a 32-bit integer indicating the **height of the framebuffer (in pixels)**.
 
 The framebuffer will be used by the program as a 2D array of 32-bit integers stored in row-major order. It should contain the final image after the program halts. Each array element contains 4 bytes, but only the least significant 3 bytes will be used: lowest byte is the red component, then green, then blue (refer to the `setPixel` function in [`extension/raytracer.mu`](extension/raytracer.mu#L119)). Be sure to reserve at least `4 * width * height` bytes of memory for the framebuffer. You may have to increase the total memory of your emulator if you want high-resolution images.
@@ -61,5 +63,3 @@ To show the resulting image visually, you could add `printf` in your emulator to
 ## Final note
 
 If you want to modify some of the constants in the ray tracer, please note that we have avoided writing numbers not representable as 8-bit immediate values; where we cannot avoid, we put that procedure nearer to the end of the program. The spec did not give a suggestion for **loading constants from more than 4095 bytes away**, which can be a problem only for very long programs like our ray tracer.
-
-*Group 48: Bingqi Li, Haoran Wang, Leven Zhou, Zhanrong Qiao*
