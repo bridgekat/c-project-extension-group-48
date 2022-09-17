@@ -372,18 +372,6 @@ letrec
   // Converts IR code to ARM assembly
   toString = fun (x) => [
     match x with
-    // Shortcuts (better than nothing...)
-    // WARNING: some of these are unsound, more checks required
-    ((`Le _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bgt l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Lt _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bge l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Ge _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "blt l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Gt _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "ble l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Eq _ rn rm) (`JumpZero _ id) . xs)  => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "bne l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Neq _ rn rm) (`JumpZero _ id) . xs) => "cmp r" .++ (print rn) .++ ", r" .++ (print rm) .++ "\n" .++ "beq l" .++ (print id) .++ "\n" .++ (toString xs)
-    ((`Local r index) (`Load _ _) . xs)  => "ldr r" .++ (print r) .++ ", [sp, #" .++ (print [index * 4]) .++ "]\n" .++ (toString xs)
-    ((`PopN 0) . xs)           => (toString xs)
-    ((`PopN a) (`PopN b) . xs) => (toString `((PopN ,[a + b]) . ,xs))
-    // Single instructions
     ()       => "\n"
     (x . xs) => [
       match x with

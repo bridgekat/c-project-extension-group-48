@@ -1,52 +1,43 @@
-# Prerequisites
-*.d
+# This the the canonical lab .gitignore file
 
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
+# Ignore temp files
+*~
 
-# Linker output
-*.ilk
-*.map
-*.exp
+# Ignore pdf files (just keep source files)
+*.pdf
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
+# Ignore junk files from latex output
 *.out
-*.app
-*.i*86
-*.x86_64
-*.hex
+*.log
+*.aux
+*.dvi
+*.ps
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+# Ignore junk files from compiling C code
+*.o
+*.exe
+src/emulate
+src/assemble
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# Ignore junk files from compiling Haskell code
+*.hi
+
+# Ignore junk files from compiling Java code
+*.class
+
+# Ignore other junk files
+*.backup
+*.kate-swp
+*.swp
+*.snm
+*.vrb
+*.nav
+*.toc
+
+# Ignore Visual Studio Code configurations by default
+.vscode/
+
+# Ignore interpreter executable and graphics output
+extension/testeval
+*.ppm
+*.bmp

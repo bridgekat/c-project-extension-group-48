@@ -40,6 +40,11 @@
     }
   }
 
+  // Those functions are commented out since they depend on `fixed_mul`.
+  // You will need to manually include either one of "../fixed_fast.s" or "../fixed_precise.s"
+  // in the generated assembly, otherwise there will be a linking error (undefined labels).
+
+  /*
   void func5(int k, int pvec, int pdst) {
     int arr[4];
     arr[0] = fixed_mul(k, *pvec);
@@ -61,14 +66,15 @@
     pvec[3] = 0x40000;
     func5(0x20000, pvec, 0xF000);
   }
+  */
 
 })
 
 [begin
-  (debug_save_file "compiled.s" (toString (programIR all)));
+  (debug_save_file "examples.s" (toString (programIR all)));
   (display "");
   (display "==========================================");
   (display "Compilation succeeded!");
-  (display "Assembly has been written to \"compiled.s\".");
+  (display "Assembly has been written to \"examples.s\".");
   (display "==========================================");
   (display "")]
